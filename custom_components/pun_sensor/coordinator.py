@@ -42,6 +42,8 @@ tz_pun = ZoneInfo("Europe/Rome")
 
 
 class PUNDataUpdateCoordinator(DataUpdateCoordinator):
+    """Data coordinator"""
+
     session: ClientSession
 
     def __init__(self, hass: HomeAssistant, config: ConfigEntry) -> None:
@@ -87,54 +89,36 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             date_start = date_start - timedelta(days=3)
 
         # URL del sito Mercato elettrico
-        LOGIN_URL = "https://www.mercatoelettrico.org/It/Tools/Accessodati.aspx?ReturnUrl=%2fIt%2fdownload%2fDownloadDati.aspx%3fval%3dMGP_Prezzi&val=MGP_Prezzi"
-        DOWNLOAD_URL = "https://www.mercatoelettrico.org/It/download/DownloadDati.aspx?val=MGP_Prezzi"
+        download_url = f"https://gme.mercatoelettrico.org/DesktopModules/GmeDownload/API/ExcelDownload/downloadzipfile?DataInizio={date_start}&DataFine={date_end}&Date={date_end}&Mercato=MGP&Settore=Prezzi&FiltroDate=InizioFine"
 
-        # Apre la pagina per generare i cookie e i campi nascosti
-        _LOGGER.debug("Connessione a URL login.")
-        async with self.session.get(LOGIN_URL) as response:
-            soup = await self.hass.async_add_executor_job(
-                partial(BeautifulSoup, await response.read(), features="html.parser")
-            )
-
-        # Recupera i campi nascosti __VIEWSTATE e __EVENTVALIDATION per la prossima richiesta
-        viewstate = soup.find("input", {"name": "__VIEWSTATE"})["value"]
-        eventvalidation = soup.find("input", {"name": "__EVENTVALIDATION"})["value"]
-        login_payload = {
-            "ctl00$ContentPlaceHolder1$CBAccetto1": "on",
-            "ctl00$ContentPlaceHolder1$CBAccetto2": "on",
-            "ctl00$ContentPlaceHolder1$Button1": "Accetto",
-            "__VIEWSTATE": viewstate,
-            "__EVENTVALIDATION": eventvalidation,
-        }
-
-        # Effettua il login (che se corretto porta alla pagina di download XML grazie al 'ReturnUrl')
-        _LOGGER.debug("Invio credenziali a URL login.")
-        async with self.session.post(LOGIN_URL, data=login_payload) as response:
-            soup = await self.hass.async_add_executor_job(
-                partial(BeautifulSoup, await response.read(), features="html.parser")
-            )
-
-        # Recupera i campi nascosti __VIEWSTATE per la prossima richiesta
-        viewstate = soup.find("input", {"name": "__VIEWSTATE"})["value"]
-        data_request_payload = {
-            "ctl00$ContentPlaceHolder1$tbDataStart": date_start.strftime("%d/%m/%Y"),
-            "ctl00$ContentPlaceHolder1$tbDataStop": date_end.strftime("%d/%m/%Y"),
-            "ctl00$ContentPlaceHolder1$btnScarica": "scarica+file+xml+compresso",
-            "__VIEWSTATE": viewstate,
+        # imposta gli header della richiesta
+        heads = {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "en-US,en;q=0.9",
+            "cache-control": "no-cache",
+            "moduleid": "12103",
+            "pragma": "no-cache",
+            "priority": "u=1, i",
+            "referrer": "https://gme.mercatoelettrico.org/en-us/Home/Results/Electricity/MGP/Download?valore=Prezzi",
+            "sec-ch-ua": '"Not-A.Brand";v="99", "Chromium";v="124"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "tabid": "1749",
+            "userid": "-1",
         }
 
         # Effettua il download dello ZIP con i file XML
         _LOGGER.debug("Inizio download file ZIP con XML.")
-        async with self.session.post(
-            DOWNLOAD_URL, data=data_request_payload
-        ) as response:
+        async with self.session.get(download_url, headers=heads) as response:
             # Scompatta lo ZIP in memoria
             try:
                 archive = zipfile.ZipFile(io.BytesIO(await response.read()))
-            except:
+            except (zipfile.BadZipfile, IOError) as e:  # not a zip:
                 # Esce perché l'output non è uno ZIP
-                raise UpdateFailed("Archivio ZIP scaricato dal sito non valido.")
+                raise UpdateFailed("Archivio ZIP scaricato dal sito non valido.") from e
 
         # Mostra i file nell'archivio
         _LOGGER.debug(
@@ -161,11 +145,15 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             xml_root = xml_tree.getroot()
 
             # Estrae la data dal primo elemento (sarà identica per gli altri)
-            dat_string = xml_root.find("Prezzi").find("Data").text  # YYYYMMDD
+            dat_string = (
+                xml_root.find("Prezzi").find("Data").text
+            )  # YYYYMMDD # type: ignore
 
             # Converte la stringa giorno in data
             dat_date = date(
-                int(dat_string[0:4]), int(dat_string[4:6]), int(dat_string[6:8])
+                int(dat_string[0:4]),  # type: ignore
+                int(dat_string[4:6]),  # type: ignore
+                int(dat_string[6:8]),  # type: ignore
             )
 
             # Verifica la festività
@@ -174,11 +162,11 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             # Estrae le rimanenti informazioni
             for prezzi in xml_root.iter("Prezzi"):
                 # Estrae l'ora dall'XML
-                ora = int(prezzi.find("Ora").text) - 1  # 1..24
+                ora = int(prezzi.find("Ora").text) - 1  # 1..24 # type: ignore
 
                 # Estrae il prezzo PUN dall'XML in un float
-                prezzo_string = prezzi.find("PUN").text
-                prezzo_string = prezzo_string.replace(".", "").replace(",", ".")
+                prezzo_string = prezzi.find("PUN").text  # type: ignore
+                prezzo_string = prezzo_string.replace(".", "").replace(",", ".")  # type: ignore
                 prezzo = float(prezzo_string) / 1000
 
                 # Estrae la fascia oraria
@@ -213,7 +201,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
         # Calcola la fascia F23 (a partire da F2 ed F3)
         # NOTA: la motivazione del calcolo è oscura ma sembra corretta; vedere:
         # https://github.com/virtualdj/pun_sensor/issues/24#issuecomment-1829846806
-        if self.orari[PUN_FASCIA_F2] > 0 and self.orari[PUN_FASCIA_F3] > 0:
+        if (self.orari[PUN_FASCIA_F2] and self.orari[PUN_FASCIA_F3]) > 0:
             # Esistono dati sia per F2 che per F3
             self.orari[PUN_FASCIA_F23] = (
                 self.orari[PUN_FASCIA_F2] + self.orari[PUN_FASCIA_F3]
@@ -262,7 +250,6 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def update_pun(self, now=None):
         """Aggiorna i prezzi PUN da Internet (funziona solo se schedulata)"""
-
         # Aggiorna i dati da web
         try:
             # Esegue l'aggiornamento
@@ -270,6 +257,8 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Se non ci sono eccezioni, ha avuto successo
             self.web_retries = 0
+        # pylint: disable=W0718
+        # Broad Except catching
         except Exception as e:
             # Errori durante l'esecuzione dell'aggiornamento, riprova dopo
             if self.web_retries == 0:
@@ -327,7 +316,6 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Esce e attende la prossima schedulazione
             return
-
         # Notifica che i dati PUN sono stati aggiornati con successo
         self.async_set_updated_data({COORD_EVENT: EVENT_UPDATE_PUN})
 
