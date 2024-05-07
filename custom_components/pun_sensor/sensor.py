@@ -68,6 +68,10 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=False)
 
 
+def decode_fascia(fascia: int | None) -> str | None:
+    return f"F{fascia}"
+
+
 def fmt_float(num: float) -> str:
     """Formatta adeguatamente il numero decimale."""
     if has_suggested_display_precision:
@@ -228,15 +232,14 @@ class FasciaPUNSensorEntity(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         """Restituisce la fascia corrente come stato"""
-        return f"F{self.coordinator.fascia_corrente}"
+        return decode_fascia(self.coordinator.fascia_corrente)
 
-    @override
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         return {
-            'fascia_successiva': decode_fascia(self.coordinator.fascia_successiva),
-            'inizio_fascia_successiva': self.coordinator.prossimo_cambio_fascia,
-            'termine_fascia_successiva': self.coordinator.termine_prossima_fascia
+            "fascia_successiva": decode_fascia(self.coordinator.fascia_successiva),
+            "inizio_fascia_successiva": self.coordinator.prossimo_cambio_fascia,
+            "termine_fascia_successiva": self.coordinator.termine_prossima_fascia,
         }
 
     @property
