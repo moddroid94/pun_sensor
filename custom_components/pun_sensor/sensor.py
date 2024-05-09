@@ -65,14 +65,10 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=False)
 
 
-def decode_fascia(fascia: int | None) -> str | None:
-    return f"F{fascia}"
-
-
-def fmt_float(num: float) -> str:
+def fmt_float(num: float) -> str | float:
     """Formatta adeguatamente il numero decimale."""
     if has_suggested_display_precision:
-        return str(num)
+        return num
 
     # In versioni precedenti di Home Assistant che non supportano
     # l'attributo 'suggested_display_precision' restituisce il numero
@@ -159,7 +155,7 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
         return f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     @property
-    def state(self) -> str:
+    def state(self) -> str | float:
         return fmt_float(self.native_value)
 
     @property
@@ -329,7 +325,7 @@ class PrezzoFasciaPUNSensorEntity(FasciaPUNSensorEntity, RestoreEntity):
         return f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     @property
-    def state(self) -> str:
+    def state(self) -> str | float:
         return fmt_float(self.native_value)
 
     @property
