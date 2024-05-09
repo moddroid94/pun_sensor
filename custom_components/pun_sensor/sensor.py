@@ -24,14 +24,9 @@ from homeassistant.helpers.typing import DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import PUNDataUpdateCoordinator
-from .const import (
-    DOMAIN,
-    PUN_FASCIA_F1,
-    PUN_FASCIA_F2,
-    PUN_FASCIA_F3,
-    PUN_FASCIA_F23,
-    PUN_FASCIA_MONO,
-)
+from .const import DOMAIN
+
+from .interfaces import PunValues, Fascia
 
 ATTR_ROUNDED_DECIMALS = "rounded_decimals"
 
@@ -53,13 +48,13 @@ async def async_setup_entry(
         "2023.3.0"
     )
 
-    # Crea i sensori (legati al coordinator)
+    # Crea i sensori dei valori del pun(legati al coordinator)
     entities = []
-    entities.append(PUNSensorEntity(coordinator, PUN_FASCIA_MONO))
-    entities.append(PUNSensorEntity(coordinator, PUN_FASCIA_F23))
-    entities.append(PUNSensorEntity(coordinator, PUN_FASCIA_F1))
-    entities.append(PUNSensorEntity(coordinator, PUN_FASCIA_F2))
-    entities.append(PUNSensorEntity(coordinator, PUN_FASCIA_F3))
+    available_puns = PunValues()
+    for fascia in available_puns.value:
+        entities.append(PUNSensorEntity(coordinator, fascia))
+
+    # crea sensori aggiuntivi
     entities.append(FasciaPUNSensorEntity(coordinator))
     entities.append(PrezzoFasciaPUNSensorEntity(coordinator))
 
@@ -91,8 +86,7 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
 
         # Inizializza coordinator e tipo
         self.coordinator = coordinator
-        self.tipo = tipo
-
+        self.fascia = fascia
         # ID univoco sensore basato su un nome fisso
         # TODO Switch to Enum interface for fasce
         match self.tipo:
@@ -120,9 +114,9 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Gestisce l'aggiornamento dei dati dal coordinator."""
-        self._available = self.coordinator.orari[self.tipo] > 0
+        self._available = len(self.coordinator.pun_data.pun[self.fascia]) > 0
         if self._available:
-            self._native_value = self.coordinator.pun[self.tipo]
+            self._native_value = self.coordinator.pun_values.value[self.fascia]
         self.async_write_ha_state()
 
     @property
@@ -174,12 +168,10 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
     @property
     def name(self) -> str:
         """Restituisce il nome del sensore"""
-        if self.tipo in [1, 2, 3]:
-            return f"PUN fascia F{self.tipo}"
-        if self.tipo == PUN_FASCIA_MONO:
+        if self.fascia == Fascia.MONO:
             return "PUN mono-orario"
-        if self.tipo == PUN_FASCIA_F23:
-            return "PUN fascia F23"
+        if self.fascia:
+            return f"PUN fascia {self.fascia.value}"
         return "None"
 
     @property
@@ -232,12 +224,16 @@ class FasciaPUNSensorEntity(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         """Restituisce la fascia corrente come stato"""
-        return decode_fascia(self.coordinator.fascia_corrente)
+        if not self.coordinator.fascia_corrente:
+            return "None"
+        return self.coordinator.fascia_corrente.value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         return {
-            "fascia_successiva": decode_fascia(self.coordinator.fascia_successiva),
+            "fascia_successiva": self.coordinator.fascia_successiva.value
+            if self.coordinator.fascia_successiva
+            else "None",
             "inizio_fascia_successiva": self.coordinator.prossimo_cambio_fascia,
             "termine_fascia_successiva": self.coordinator.termine_prossima_fascia,
         }
@@ -275,22 +271,16 @@ class PrezzoFasciaPUNSensorEntity(FasciaPUNSensorEntity, RestoreEntity):
     def _handle_coordinator_update(self) -> None:
         """Gestisce l'aggiornamento dei dati dal coordinator."""
         if super().available:
-            if self.coordinator.fascia_corrente == 3:
-                self._available = self.coordinator.orari[PUN_FASCIA_F3] > 0
-                self._native_value = self.coordinator.pun[PUN_FASCIA_F3]
-                self._friendly_name = "Prezzo fascia corrente (F3)"
-            elif self.coordinator.fascia_corrente == 2:
-                self._available = self.coordinator.orari[PUN_FASCIA_F2] > 0
-                self._native_value = self.coordinator.pun[PUN_FASCIA_F2]
-                self._friendly_name = "Prezzo fascia corrente (F2)"
-            elif self.coordinator.fascia_corrente == 1:
-                self._available = self.coordinator.orari[PUN_FASCIA_F1] > 0
-                self._native_value = self.coordinator.pun[PUN_FASCIA_F1]
-                self._friendly_name = "Prezzo fascia corrente (F1)"
-            else:
-                self._available = False
-                self._native_value = 0
-                self._friendly_name = "Prezzo fascia corrente"
+            assert self.coordinator.fascia_corrente
+            self._available = (
+                len(self.coordinator.pun_data.pun[self.coordinator.fascia_corrente]) > 0
+            )
+            self._native_value = self.coordinator.pun_values.value[
+                self.coordinator.fascia_corrente
+            ]
+            self._friendly_name = (
+                f"Prezzo fascia corrente (F{self.coordinator.fascia_corrente.value})"
+            )
         else:
             self._available = False
             self._native_value = 0
