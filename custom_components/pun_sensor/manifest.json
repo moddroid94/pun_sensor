@@ -12,6 +12,6 @@
   "loggers": ["pun_sensor"],
   "requirements": ["holidays"],
   "single_config_entry": true,
-  "version": "0.8.1"
+  "version": "0.8.3"
 
 }
