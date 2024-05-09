@@ -10,8 +10,6 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession, ServerConnectionError
 
-import holidays
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -130,7 +128,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 archive = zipfile.ZipFile(io.BytesIO(bytes_response), "r")
 
-            # Esce perché l'output non è uno ZIP, o ha un errore IO
+            # Riotorna error se l'output non è uno ZIP, o ha un errore IO
             except (zipfile.BadZipfile, OSError) as e:  # not a zip:
                 _LOGGER.error(
                     "Error failed download. url %s, length %s, response %s",
@@ -146,6 +144,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             len(archive.namelist()),
             ", ".join(str(fn) for fn in archive.namelist()),
         )
+
         # Estrae i dati dall'archivio
         self.pun_data = extract_xml(archive, self.pun_data)
 
@@ -156,24 +155,21 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
                 # calcola la media dei pun e aggiorna il valore del pun attuale per la fascia corrispondente
                 self.pun_values.value[fascia] = mean(self.pun_data.pun[fascia])
             else:
-                # non avendo dati reali per la fascia F23 la length sara' 0, quindi facciamo un catch qua
-                if fascia == Fascia.F23:
-                    # Calcola la fascia F23 (a partire da F2 ed F3)
-                    # NOTA: la motivazione del calcolo è oscura ma sembra corretta; vedere:
-                    # https://github.com/virtualdj/pun_sensor/issues/24#issuecomment-1829846806
-                    # Se esistono dati otteniamo un valore, se non abbiamo i dati di una delle 2
-                    self.pun_values.value[Fascia.F23] = (
-                        (
-                            0.46 * self.pun_values.value[Fascia.F2]
-                            + 0.54 * self.pun_values.value[Fascia.F3]
-                        )
-                        if (
-                            len(self.pun_data.pun[Fascia.F2])
-                            + len(self.pun_data.pun[Fascia.F3])
-                        )
-                        > 0
-                        else 0
-                    )
+                # we skip empy dicts
+                pass
+        # Calcola la fascia F23 (a partire da F2 ed F3)
+        # NOTA: la motivazione del calcolo è oscura ma sembra corretta; vedere:
+        # https://github.com/virtualdj/pun_sensor/issues/24#issuecomment-1829846806
+        # essendo derivato e non avendo sicurezza dell'ordine del dict, controlliamo dopo
+        if (
+            len(self.pun_data.pun[Fascia.F2]) and len(self.pun_data.pun[Fascia.F3])
+        ) > 0:
+            self.pun_values.value[Fascia.F23] = (
+                0.46 * self.pun_values.value[Fascia.F2]
+                + 0.54 * self.pun_values.value[Fascia.F3]
+            )
+        else:
+            self.pun_values.value[Fascia.F23] = 0
 
         # Logga i dati
         _LOGGER.debug(
@@ -235,7 +231,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Se non ci sono eccezioni, ha avuto successo
             self.web_retries = 0
-        # errore nel fetch dei dati
+        # errore nel fetch dei dati, if request not 200
         except ServerConnectionError as e:
             # Errori durante l'esecuzione dell'aggiornamento, riprova dopo
             if self.web_retries < 6:
@@ -285,9 +281,8 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
         # pylint: disable=W0718
         # Broad Except catching
-        # possibili errori: estrazione dei dati, file non zip.
+        # possibili errori: estrazione dei dati, file non valido.
         # Non ha avuto errori nel download, da gestire diversamente, per ora schedula a domani
-        # #TODO Wrap XML extracion into try/catch to re-raise into something we can expect
         except (Exception, UpdateFailed) as e:
             # Giorno dopo
             # Annulla eventuali schedulazioni attive

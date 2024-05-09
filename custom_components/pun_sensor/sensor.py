@@ -63,14 +63,10 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=False)
 
 
-def decode_fascia(fascia: int | None) -> str | None:
-    return f"F{fascia}"
-
-
-def fmt_float(num: float) -> str:
+def fmt_float(num: float) -> str | float:
     """Formatta adeguatamente il numero decimale."""
     if has_suggested_display_precision:
-        return str(num)
+        return num
 
     # In versioni precedenti di Home Assistant che non supportano
     # l'attributo 'suggested_display_precision' restituisce il numero
@@ -81,24 +77,31 @@ def fmt_float(num: float) -> str:
 class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
     """Sensore PUN relativo al prezzo medio mensile per fasce."""
 
-    def __init__(self, coordinator: PUNDataUpdateCoordinator, tipo: int) -> None:
+    def __init__(self, coordinator: PUNDataUpdateCoordinator, fascia: Fascia) -> None:
         super().__init__(coordinator)
 
         # Inizializza coordinator e tipo
         self.coordinator = coordinator
         self.fascia = fascia
+
+        # BREAKING CHANGE, NEW ENTITY_ID CONVENTION FOR SENSORS
+        # non so come reagisce HA ad un cambio degli id
+        # possiamo provare a trasferire i dati o a fixare le statistiche a lungo termine?
+        # pros: se si aggiungono sensori o si modificano non va cambiato nulla qua
+        # cons: gli id dei sensori cambiano se cambia qualcosa a monte
+        # self.entity_id = ENTITY_ID_FORMAT.format(f"pun_{self.fascia.value}")
+
         # ID univoco sensore basato su un nome fisso
-        # TODO Switch to Enum interface for fasce
-        match self.tipo:
-            case 0:
+        match self.fascia:
+            case Fascia.MONO:
                 self.entity_id = ENTITY_ID_FORMAT.format("pun_mono_orario")
-            case 1:
+            case Fascia.F1:
                 self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f1")
-            case 2:
+            case Fascia.F2:
                 self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f2")
-            case 3:
+            case Fascia.F3:
                 self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f3")
-            case 4:
+            case Fascia.F23:
                 self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f23")
             case _:
                 self.entity_id = "none"
@@ -114,8 +117,16 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Gestisce l'aggiornamento dei dati dal coordinator."""
-        self._available = len(self.coordinator.pun_data.pun[self.fascia]) > 0
-        if self._available:
+        if len(self.coordinator.pun_data.pun[self.fascia]) > 0:
+            self._available = True
+            self._native_value = self.coordinator.pun_values.value[self.fascia]
+        # special case for F23 because we don't have them in the dict of values
+        # can we compare against calculated value? if it's not 0 then it's available?
+        if (
+            self.fascia == Fascia.F23
+            and self.coordinator.pun_values.value[self.fascia] != 0
+        ):
+            self._available = True
             self._native_value = self.coordinator.pun_values.value[self.fascia]
         self.async_write_ha_state()
 
@@ -157,7 +168,7 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
         return f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     @property
-    def state(self) -> str:
+    def state(self) -> str | float:
         return fmt_float(self.native_value)
 
     @property
@@ -279,7 +290,7 @@ class PrezzoFasciaPUNSensorEntity(FasciaPUNSensorEntity, RestoreEntity):
                 self.coordinator.fascia_corrente
             ]
             self._friendly_name = (
-                f"Prezzo fascia corrente (F{self.coordinator.fascia_corrente.value})"
+                f"Prezzo fascia corrente ({self.coordinator.fascia_corrente.value})"
             )
         else:
             self._available = False
@@ -327,7 +338,7 @@ class PrezzoFasciaPUNSensorEntity(FasciaPUNSensorEntity, RestoreEntity):
         return f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}"
 
     @property
-    def state(self) -> str:
+    def state(self) -> str | float:
         return fmt_float(self.native_value)
 
     @property
