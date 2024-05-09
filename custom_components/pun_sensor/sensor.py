@@ -119,8 +119,16 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Gestisce l'aggiornamento dei dati dal coordinator."""
-        self._available = len(self.coordinator.pun_data.pun[self.fascia]) > 0
-        if self._available:
+        if len(self.coordinator.pun_data.pun[self.fascia]) > 0:
+            self._available = True
+            self._native_value = self.coordinator.pun_values.value[self.fascia]
+        # special case for F23 because we don't have them in the dict of values
+        # can we compare against calculated value? if it's not 0 then it's available?
+        if (
+            self.fascia == Fascia.F23
+            and self.coordinator.pun_values.value[self.fascia] != 0
+        ):
+            self._available = True
             self._native_value = self.coordinator.pun_values.value[self.fascia]
         self.async_write_ha_state()
 
