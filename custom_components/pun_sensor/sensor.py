@@ -85,21 +85,28 @@ class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
         # Inizializza coordinator e tipo
         self.coordinator = coordinator
         self.fascia = fascia
+
+        # BREAKING CHANGE, NEW ENTITY_ID CONVENTION FOR SENSORS
+        # non so come reagisce HA ad un cambio degli id
+        # possiamo provare a trasferire i dati o a fixare le statistiche a lungo termine?
+        # pros: se si aggiungono sensori o si modificano non va cambiato nulla qua
+        # cons: gli id dei sensori cambiano se cambia qualcosa a monte
+        self.entity_id = ENTITY_ID_FORMAT.format(f"pun_{self.fascia.value}")
+        # Disabilitato per testare nuova convenzione, da decidere se cambiarlo o mantenere lo stesso
         # ID univoco sensore basato su un nome fisso
-        # TODO Switch to Enum interface for fasce
-        match self.tipo:
-            case 0:
-                self.entity_id = ENTITY_ID_FORMAT.format("pun_mono_orario")
-            case 1:
-                self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f1")
-            case 2:
-                self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f2")
-            case 3:
-                self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f3")
-            case 4:
-                self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f23")
-            case _:
-                self.entity_id = "none"
+        # match self.fascia:
+        #     case Fascia.MONO:
+        #         self.entity_id = ENTITY_ID_FORMAT.format("pun_mono_orario")
+        #     case Fascia.F1:
+        #         self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f1")
+        #     case Fascia.F2:
+        #         self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f2")
+        #     case Fascia.F3:
+        #         self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f3")
+        #     case Fascia.F23:
+        #         self.entity_id = ENTITY_ID_FORMAT.format("pun_fascia_f23")
+        #     case _:
+        #         self.entity_id = "none"
         self._attr_unique_id = self.entity_id
         self._attr_has_entity_name = True
 
