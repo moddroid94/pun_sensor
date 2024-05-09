@@ -1,3 +1,6 @@
+"""utils"""
+
+# pylint: disable= E1101
 import logging
 from datetime import date, datetime, timedelta
 from zipfile import ZipFile
@@ -36,7 +39,7 @@ def get_fascia(dataora: datetime) -> tuple[int, datetime]:
     """Restituisce la fascia della data/ora indicata (o quella corrente) e la data del prossimo cambiamento."""
 
     # Verifica se la data corrente è un giorno con festività
-    festivo = dataora in holidays.IT()
+    festivo = dataora in holidays.IT()  # type: ignore
 
     # Identifica la fascia corrente
     # F1 = lu-ve 8-19
@@ -130,7 +133,7 @@ def get_next_date(
     )
 
     if feriale:
-        while (prossima in holidays.IT()) or (prossima.weekday() == 6):
+        while (prossima in holidays.IT()) or (prossima.weekday() == 6):  # type: ignore
             prossima += timedelta(days=1)
 
     return prossima
@@ -143,13 +146,7 @@ def extract_xml(archive: ZipFile):
     List[ list[MONO: float], list[F1: float], list[F2: float], list[F3: float] ]
     """
     # Carica le festività
-    it_holidays = holidays.IT()
-
-    # Inizializza le variabili di conteggio dei risultati
-    mono: list[float] = []
-    f1: list[float] = []
-    f2: list[float] = []
-    f3: list[float] = []
+    it_holidays = holidays.IT()  # type: ignore
 
     # Esamina ogni file XML nello ZIP (ordinandoli prima)
     for fn in sorted(archive.namelist()):
