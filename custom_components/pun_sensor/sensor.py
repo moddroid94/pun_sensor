@@ -83,7 +83,7 @@ def fmt_float(num: float) -> str:
 class PUNSensorEntity(CoordinatorEntity, SensorEntity, RestoreEntity):
     """Sensore PUN relativo al prezzo medio mensile per fasce."""
 
-    def __init__(self, coordinator: PUNDataUpdateCoordinator, tipo: int) -> None:
+    def __init__(self, coordinator: PUNDataUpdateCoordinator, fascia: Fascia) -> None:
         super().__init__(coordinator)
 
         # Inizializza coordinator e tipo
