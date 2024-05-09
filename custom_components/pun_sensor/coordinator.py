@@ -10,8 +10,6 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession, ServerConnectionError
 
-import holidays
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -130,7 +128,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 archive = zipfile.ZipFile(io.BytesIO(bytes_response), "r")
 
-            # Esce perché l'output non è uno ZIP, o ha un errore IO
+            # Riotorna error se l'output non è uno ZIP, o ha un errore IO
             except (zipfile.BadZipfile, OSError) as e:  # not a zip:
                 _LOGGER.error(
                     "Error failed download. url %s, length %s, response %s",
@@ -146,6 +144,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
             len(archive.namelist()),
             ", ".join(str(fn) for fn in archive.namelist()),
         )
+
         # Estrae i dati dall'archivio
         self.pun_data = extract_xml(archive, self.pun_data)
 
@@ -235,7 +234,7 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Se non ci sono eccezioni, ha avuto successo
             self.web_retries = 0
-        # errore nel fetch dei dati
+        # errore nel fetch dei dati, if request not 200
         except ServerConnectionError as e:
             # Errori durante l'esecuzione dell'aggiornamento, riprova dopo
             if self.web_retries < 6:
@@ -285,9 +284,8 @@ class PUNDataUpdateCoordinator(DataUpdateCoordinator):
 
         # pylint: disable=W0718
         # Broad Except catching
-        # possibili errori: estrazione dei dati, file non zip.
+        # possibili errori: estrazione dei dati, file non valido.
         # Non ha avuto errori nel download, da gestire diversamente, per ora schedula a domani
-        # #TODO Wrap XML extracion into try/catch to re-raise into something we can expect
         except (Exception, UpdateFailed) as e:
             # Giorno dopo
             # Annulla eventuali schedulazioni attive
