@@ -1,11 +1,19 @@
-name: Release
+name: Release Maker
 
 on:
-  release:
-    #    types: [prereleased,published]
-    types: [created]
+  push:
+    branches:
+      - master
 
 jobs:
+  update_release_draft:
+    name: Update release draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   release_zip_file:
     name: Prepare release asset
     runs-on: ubuntu-latest
